@@ -1,89 +1,79 @@
-# 参与 Mojobox 开发
+# Contributing to DSH Mojobox
 
-Mojobox 的改动通常落在目录数据、协议、网站或构建工具之一。请保持改动聚焦，不要在同一个
-PR 中顺带重排全部 JSON 或升级无关依赖。
+本文面向提交 Pull Request 的维护者。第一次了解项目请先读 [README](README.md)，涉及边界或
+Host Adapter 时再读[架构说明](docs/architecture.md)。使用 coding agent 时先让它读取
+[AGENTS.md](AGENTS.md)。
 
-## 开发准备
+## 1. 开发环境
 
-需要 Node.js 22 或更高版本。
+要求 Node.js 22 或更高版本。
 
 ```bash
 npm ci
 npm test
 ```
 
-从任务分支开始工作。提交使用 Conventional Commits，例如：
+使用独立任务分支。提交采用 Conventional Commits：
 
 ```text
 feat(catalog): 添加 example 插件记录
 fix(pack): 修正 focus-kit 的 artifact 摘要
-docs: 补充 Evidence 贡献说明
+docs: 完善 Host Adapter 接入说明
 ```
 
-## 添加或更新插件
+## 2. 改动流程
 
-1. 在 `catalog/plugins/` 新增或修改一个以稳定插件 ID 命名的 JSON 文件。
-2. 优先引用作者发布的 Manifest；目录代维护时标记 `registry-maintained`。
-3. 仅填写能从代码、包元数据或上游文档核验的能力。
-4. 已发布产物必须使用精确版本、固定 URL 和真实 SHA-256。
-5. 未发布插件标记为 `unpublished`，不要写入 Pack Lock。
+### 插件记录
+
+1. 在 `catalog/plugins/<stable-id>.json` 添加或更新记录。
+2. 优先采用作者 Manifest；目录代维护记录使用 `registry-maintained`。
+3. 只填写可从源码、包元数据或上游文档核验的事实。
+4. 已发布 artifact 使用精确版本、固定 URL 和真实 SHA-256。
+5. 未发布记录标记 `unpublished`，不加入 Pack Lock。
 6. 运行 `npm test`。
 
-更新 Manifest 的任何原始字节都会改变 `manifestDigest`。修改后必须同步所有引用它的 Lock
-和 Evidence；不要通过重新格式化 JSON 制造无意义的摘要变化。
+Manifest 任意字节变化都会改变 `manifestDigest`。同步更新引用它的 Lock 和 Evidence，不要仅为
+格式统一重排已有 JSON。
 
-## 添加或更新 Pack
+### Pack 与 Pack Lock
 
-Pack 与 Lock 必须成对：
+同时维护：
 
 ```text
 catalog/packs/<id>.pack.json
 catalog/packs/<id>.lock.json
 ```
 
-Pack 写组合意图，Lock 写精确发布事实。提交前确认：
+确认 Pack ID/版本、组件集合、组件版本完全对应；Lock 使用精确 npm 来源，并记录真实
+`manifestDigest` 与 `artifactDigest`。完成后运行 `npm test` 和 `npm run build`。
 
-- Pack ID 和版本与 Lock 的 `pack` 一致；
-- 每个组件都存在于 `catalog/plugins/`；
-- 组件版本完全一致，不使用 range 或 tag；
-- `source` 是精确 npm 包版本；
-- `manifestDigest` 来自仓库文件的原始字节；
-- `artifactDigest` 来自实际下载的 tarball；
-- 所有必需组件都有可下载产物。
+### Evidence
 
-随后运行 `npm test` 和 `npm run build`。构建会重新下载或读取缓存产物并校验摘要。
+Evidence 必须记录真实执行结果，并绑定：
 
-## 添加 Evidence
+- subject ID、版本、artifact digest 与 Manifest digest；
+- issuer、Host、Adapter、DSH 和 runtime；
+- suite ID、版本与 digest；
+- 协议 revision；
+- checks、时间、有效期和撤回状态。
 
-Evidence 不是兼容口号，而是一条可复验记录。至少核对：
+fixture 只测试协议形状，不计为生产 Evidence。不同宿主必须独立记录 issuer、Host Descriptor
+和适用范围。
 
-- subject ID、版本和 artifact digest；
-- Manifest digest；
-- issuer、Host、Adapter 和 DSH 版本；
-- Admission Profile 或 suite ID、版本和 digest；
-- 使用的规范 revision；
-- 每项 check 的真实结果；
-- 签发时间、有效期和撤回状态。
+### Schema 或 Validator
 
-fixture 用于验证协议形状，不计为生产证据。不同宿主对同一产物签发 Evidence 时必须保留
-各自 issuer、Host Descriptor 和适用范围。
+协议变化至少包含：
 
-## 修改 Schema 或校验器
+- 一个 `fixtures/valid/` 正例；
+- 一个 `fixtures/invalid/` 反例；
+- 必要的跨文件语义校验；
+- PR 中的兼容影响、迁移和回退说明。
 
-Schema 改动至少同时包含：
+不要为单条目录数据放宽公共 Schema，也不要让 Validator 访问网络或执行插件。
 
-- 一个应通过的 `fixtures/valid/` 样本；
-- 一个应拒绝的 `fixtures/invalid/` 样本；
-- `scripts/validate.mjs` 中必要的跨文件语义检查；
-- PR 中对兼容影响和旧数据迁移方式的说明。
+### Static Web
 
-不要为了单个目录条目放宽公共 Schema。无法由 Schema 表达的跨文件约束应放入校验器，
-但不要把网络访问、插件执行或宿主安装塞进校验阶段。
-
-## 修改网站
-
-网站必须保持纯静态并以 catalog 为唯一数据源。不要手工修改
-`site/public/generated/` 或 `dist/`。
+网站保持无后端，并且只消费生成的 Catalog。不要手工编辑生成目录。
 
 ```bash
 npm run dev
@@ -92,23 +82,24 @@ BASE_PATH=/dsh-mojobox/ npm run build
 npm run preview
 ```
 
-检查搜索、筛选、详情和所有下载链接。布局变化还应验证窄屏与桌面视口、键盘焦点、空状态
-和下载失败状态。
+UI 变化至少检查桌面/窄屏、键盘焦点、空结果、数据加载失败和下载失败。
 
-## 更新上游规范
+### 上游协议
 
-不要把 `spec-revisions.json` 中的 commit 改成分支名或 tag。升级步骤是：
+`spec-revisions.json` 只记录完整 commit。升级时同步 vendored Schema、许可证、profiles、fixtures
+和新 Evidence。未经重新运行 suite，不得改写历史 Evidence 的 revision。
 
-1. 阅读上游变更并确定影响范围；
-2. 更新精确 revision 和 vendored Schema/许可证；
-3. 更新受影响的 profile 与 fixture；
-4. 重新运行 suite 后才重新签发 Evidence；
-5. 运行 `npm test` 和 `npm run build`。
+## 3. 最低验证
 
-旧 Evidence 应保留旧 revision。新的生态入口 revision 不会自动让历史 TUI admission 证据失效，
-也不能自动证明它符合新协议。
+| 改动 | 最低验证 |
+| --- | --- |
+| README / docs / PR template | `npm test`、链接检查、`git diff --check` |
+| Catalog / Pack / Evidence | `npm test`、`npm run build` |
+| Schema / fixtures / validator | `npm test`、`npm run build`，含正反例 |
+| Site UI | `npm test`、根路径与 `BASE_PATH=/dsh-mojobox/` 构建、人工交互检查 |
+| `.dshpack` 生成 | `npm test`、两次构建摘要对比、归档内容检查 |
 
-## 提交前检查
+## 4. 提交前检查
 
 ```bash
 npm test
@@ -117,14 +108,22 @@ git diff --check
 git status --short
 ```
 
-确认没有提交以下内容：
+不得提交：
 
-- `node_modules/`、`.cache/`、`dist/` 或 `site/public/generated/`；
-- token、cookie、凭据、用户目录或本机绝对路径；
-- 未解释的生成文件或二进制产物；
-- 与当前任务无关的格式化和依赖升级。
+- `node_modules/`、`.cache/`、`dist/`、`site/public/generated/`；
+- token、cookie、凭据、用户数据或本机绝对路径；
+- 与任务无关的格式化、依赖升级或生成文件；
+- 未经验证的摘要和浮动版本。
 
-## Pull Request
+## 5. Pull Request
 
-PR 标题和说明使用中文，列出目的、协议影响、验证命令和实际结果。目录、Evidence 或页面变化
-应附关键前后对比；协议变化必须说明兼容性和回退方式。
+PR 标题和说明使用中文。正文说明：
+
+- 改动目的与用户可见结果；
+- 受影响的协议对象和事实源；
+- 兼容性、摘要与 Evidence 影响；
+- 实际执行的验证及结果；
+- 未验证项；
+- 回退方式。
+
+不要把“Schema 通过”“fixture 通过”描述成生产宿主兼容或安全认证。

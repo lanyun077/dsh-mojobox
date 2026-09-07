@@ -1,33 +1,54 @@
-## 目的
+## 变更目的
 
-<!-- 这次改动解决什么问题？ -->
+<!-- 说明要解决的问题和可观察结果。 -->
 
-## 改动范围
+## 变更类型
 
-- [ ] Catalog / Pack / Evidence
-- [ ] Schema / fixture / validator
+- [ ] Plugin Catalog
+- [ ] Pack / Pack Lock
+- [ ] Evidence / Host Profile
+- [ ] Schema / Fixture / Validator
 - [ ] Static Web
-- [ ] Build / release
-- [ ] Documentation only
+- [ ] Build / Release
+- [ ] Documentation
+
+## 实现说明
+
+<!-- 列出修改的事实源、关键决策及未采用的方案。 -->
 
 ## 协议与兼容性
 
-<!-- 是否改变 wire format、固定 revision、摘要或宿主行为？不涉及请写“不涉及”。 -->
+<!--
+是否改变 wire format、固定 revision、组件版本或摘要？
+是否需要迁移既有 Catalog、Lock、Evidence 或 Host Adapter？
+不涉及时写“不涉及”。
+-->
 
-## 验证
+## 验证结果
 
 - [ ] `npm test`
 - [ ] `npm run build`
+- [ ] `BASE_PATH=/dsh-mojobox/ npm run build`（网站改动）
 - [ ] `git diff --check`
 
-实际结果：
+实际命令与结果：
 
-## 数据与安全
+```text
 
-- [ ] 未提交凭据、用户数据、本机绝对路径或生成目录
+```
+
+## 数据与证据检查
+
+- [ ] 未提交 `dist/`、`.cache/`、`site/public/generated/` 或其他生成物
+- [ ] 未提交凭据、用户数据或本机绝对路径
 - [ ] Manifest、artifact、suite 和 Host Descriptor 摘要已按需更新
-- [ ] 没有把 fixture 或目录维护声明描述为生产兼容认证
+- [ ] Evidence 等级与真实验证范围一致
+- [ ] 没有把 fixture 或 Schema 通过描述成生产兼容或安全认证
 
-## 回退
+## 未验证项与风险
 
-<!-- 如何撤销本次目录、协议或页面变化？ -->
+<!-- 没有则写“无”。 -->
+
+## 回退方式
+
+<!-- 如何撤销本次目录、协议、构建或页面变化？ -->
