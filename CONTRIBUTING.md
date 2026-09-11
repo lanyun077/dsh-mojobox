@@ -30,7 +30,8 @@ docs: 完善 Host Adapter 接入说明
 3. 只填写可从源码、包元数据或上游文档核验的事实。
 4. 已发布 artifact 使用精确版本、固定 URL 和真实 SHA-256。
 5. 未发布记录标记 `unpublished`，不加入 Pack Lock。
-6. 运行 `npm test`。
+6. artifact 存在 `package.json.dsh` 时可投影为 `x-mojobox-package`；没有的字段不推断。
+7. 运行 `npm test`。
 
 Manifest 任意字节变化都会改变 `manifestDigest`。同步更新引用它的 Lock 和 Evidence，不要仅为
 格式统一重排已有 JSON。
@@ -45,7 +46,9 @@ catalog/packs/<id>.lock.json
 ```
 
 确认 Pack ID/版本、组件集合、组件版本完全对应；Lock 使用精确 npm 来源，并记录真实
-`manifestDigest` 与 `artifactDigest`。完成后运行 `npm test` 和 `npm run build`。
+`manifestDigest` 与 `artifactDigest`。插件型 Pack 可选分类为 `function`、`appearance` 或
+`workflow`；分类不改变安装语义。Profile/Preset 和完整环境不得放入 Pack。完成后运行
+`npm test` 和 `npm run build`。
 
 ### Evidence
 
@@ -86,8 +89,12 @@ UI 变化至少检查桌面/窄屏、键盘焦点、空结果、数据加载失�
 
 ### 上游协议
 
-`spec-revisions.json` 只记录完整 commit。升级时同步 vendored Schema、许可证、profiles、fixtures
-和新 Evidence。未经重新运行 suite，不得改写历史 Evidence 的 revision。
+`spec-revisions.json` 只记录完整 commit，并区分现行坐标与 `legacyTuiAdmission` 等历史输入。
+升级时同步 vendored Schema、许可证、profiles、fixtures 和新 Evidence。未经重新运行 suite，
+不得改写历史 Evidence 的 revision。
+
+官方 Package Manifest 类型来自固定的 `officialHarness` revision。该投影用于目录事实和后续
+兼容计划，不得描述成官方 installer 已强制验证。
 
 ## 3. 最低验证
 

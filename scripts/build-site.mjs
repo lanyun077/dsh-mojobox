@@ -116,6 +116,7 @@ export async function buildSite() {
     source: manifest.source || null,
     artifact: manifest.artifact || null,
     maintenance: manifest['x-mojobox-maintenance'] || null,
+    packageMetadata: manifest['x-mojobox-package'] || null,
     manifestUrl: `generated/manifests/${manifest.id}.json`,
     evidence: evidenceBySubject.get(manifest.id) || []
   }))

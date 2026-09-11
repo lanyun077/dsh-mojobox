@@ -17,7 +17,8 @@
         "id": { "$ref": "#/$defs/id" },
         "version": { "$ref": "#/$defs/semver" },
         "name": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "description": { "type": "string", "minLength": 1, "maxLength": 500 }
+        "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "category": { "enum": ["function", "appearance", "workflow"] }
       }
     },
     "components": {

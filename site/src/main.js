@@ -10,6 +10,7 @@ import {
   ExternalLink,
   FileJson,
   Filter,
+  MonitorDown,
   PackageCheck,
   Search,
   ShieldCheck,
@@ -30,6 +31,7 @@ const iconSet = {
   ExternalLink,
   FileJson,
   Filter,
+  MonitorDown,
   PackageCheck,
   Search,
   ShieldCheck,
@@ -39,8 +41,14 @@ const iconSet = {
 const app = document.querySelector('#app')
 const base = import.meta.env.BASE_URL
 const levelOrder = ['Declared', 'Parsed', 'Negotiated', 'Tested', 'Observed', 'Attested']
-const state = { tab: 'plugins', query: '', availability: 'all', evidence: 'all', host: 'all', selected: null }
+const state = { tab: 'plugins', query: '', availability: 'all', evidence: 'all', host: 'all', category: 'all', selected: null }
 let catalog
+
+const categoryLabels = {
+  function: '功能包',
+  appearance: '外观包',
+  workflow: '工作流包'
+}
 
 const escapeHtml = value => String(value ?? '')
   .replaceAll('&', '&amp;')
@@ -94,7 +102,11 @@ function filteredItems() {
       return matchesQuery && matchesAvailability && matchesEvidence && matchesHost
     })
   }
-  return catalog.packs.filter(pack => !query || `${pack.metadata.name} ${pack.metadata.id}`.toLowerCase().includes(query))
+  return catalog.packs.filter(pack => {
+    const matchesQuery = !query || `${pack.metadata.name} ${pack.metadata.id}`.toLowerCase().includes(query)
+    const matchesCategory = state.category === 'all' || pack.metadata.category === state.category
+    return matchesQuery && matchesCategory
+  })
 }
 
 function pluginRow(plugin) {
@@ -117,7 +129,7 @@ function packRow(pack) {
         <span class="item-title-line"><strong>${escapeHtml(pack.metadata.name)}</strong><span class="version">v${escapeHtml(pack.metadata.version)}</span></span>
         <span class="item-id">${pack.components.length} 个组件 · ${escapeHtml(pack.metadata.id)}</span>
       </span>
-      <span class="item-status"><span class="badge badge-lock">已锁定</span></span>
+      <span class="item-status"><span class="badge badge-lock">${escapeHtml(categoryLabels[pack.metadata.category] || '未分类')}</span></span>
     </button>`
 }
 
@@ -151,6 +163,15 @@ function pluginDetail(plugin) {
         <p class="section-note"><i data-lucide="package-check"></i>精确 npm tarball，SHA-256 已记录</p>` : `
         <p class="notice warning"><i data-lucide="triangle-alert"></i>尚无可下载产物，不会进入 Pack Lock。</p>`}
     </section>
+    ${plugin.packageMetadata ? `
+    <section class="detail-section">
+      <h3>官方 Package Manifest 投影</h3>
+      <dl class="facts">
+        <div><dt>Manifest 版本</dt><dd>${escapeHtml(plugin.packageMetadata.dsh?.manifestVersion || '未声明')}</dd></div>
+        <div><dt>DSH Engine</dt><dd>${escapeHtml(plugin.packageMetadata.engines?.dsh || '未声明')}</dd></div>
+        <div><dt>Client 平台</dt><dd>${escapeHtml(plugin.packageMetadata.dsh?.client?.platform || '未声明')}</dd></div>
+      </dl>
+    </section>` : ''}
     <section class="detail-section">
       <div class="section-title"><h3>兼容证据</h3><span class="badge badge-${evidenceLevel.toLowerCase()}">${escapeHtml(evidenceLevel)}</span></div>
       ${plugin.evidence.length ? plugin.evidence.map(record => `
@@ -192,6 +213,7 @@ function packDetail(pack) {
     <section class="detail-section">
       <h3>适用范围</h3>
       <dl class="facts">
+        <div><dt>分类</dt><dd>${escapeHtml(categoryLabels[pack.metadata.category] || '未分类')}</dd></div>
         <div><dt>平台</dt><dd>${escapeHtml(platforms)}</dd></div>
         <div><dt>安装能力</dt><dd>${escapeHtml(pack.requires?.hostCapabilities?.join('、') || '无额外要求')}</dd></div>
         <div><dt>锁定状态</dt><dd>精确版本与 SHA-256</dd></div>
@@ -237,6 +259,7 @@ function render() {
         <label>产物状态<select id="availability" ${state.tab === 'packs' ? 'disabled' : ''}><option value="all">全部</option><option value="published" ${state.availability === 'published' ? 'selected' : ''}>已发布</option><option value="unpublished" ${state.availability === 'unpublished' ? 'selected' : ''}>未发布</option></select></label>
         <label>证据等级<select id="evidence-filter" ${state.tab === 'packs' ? 'disabled' : ''}><option value="all">全部</option>${levelOrder.map(level => `<option value="${level.toLowerCase()}" ${state.evidence === level.toLowerCase() ? 'selected' : ''}>${level}</option>`).join('')}</select></label>
         <label>验证宿主<select id="host-filter" ${state.tab === 'packs' ? 'disabled' : ''}><option value="all">全部</option>${[...new Map(catalog.plugins.flatMap(plugin => plugin.evidence).filter(record => record.host).map(record => [record.host.id, record.host])).values()].map(host => `<option value="${escapeHtml(host.id)}" ${state.host === host.id ? 'selected' : ''}>${escapeHtml(host.name)}</option>`).join('')}</select></label>
+        <label>Pack 分类<select id="category-filter" ${state.tab === 'plugins' ? 'disabled' : ''}><option value="all">全部</option>${Object.entries(categoryLabels).map(([value, label]) => `<option value="${value}" ${state.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
       </aside>
       <section class="directory" aria-label="目录结果">
         <div class="directory-heading"><div><span class="eyebrow">${state.tab === 'plugins' ? 'COMPONENTS' : 'COLLECTIONS'}</span><h1>${state.tab === 'plugins' ? '插件目录' : '整合包目录'}</h1></div><span>${items.length} 项</span></div>
@@ -273,6 +296,7 @@ function bindEvents() {
   document.querySelector('#availability')?.addEventListener('change', event => { state.availability = event.target.value; render() })
   document.querySelector('#evidence-filter')?.addEventListener('change', event => { state.evidence = event.target.value; render() })
   document.querySelector('#host-filter')?.addEventListener('change', event => { state.host = event.target.value; render() })
+  document.querySelector('#category-filter')?.addEventListener('change', event => { state.category = event.target.value; render() })
   document.querySelectorAll('[data-select]').forEach(button => button.addEventListener('click', () => selectItem(button.dataset.select)))
   document.querySelectorAll('[data-open-plugin]').forEach(button => button.addEventListener('click', () => selectItem(button.dataset.openPlugin, 'plugins')))
   document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', async () => {
