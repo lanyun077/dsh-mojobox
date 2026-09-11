@@ -25,7 +25,8 @@ const schemas = {
   pack: await load('schemas/pack.schema.json'),
   lock: await load('schemas/pack-lock.schema.json'),
   evidence: await load('schemas/evidence.schema.json'),
-  plugin: await load('vendor/dsh-std/dsh-plugin-0.15.schema.json')
+  plugin: await load('vendor/dsh-std/dsh-plugin-0.15.schema.json'),
+  packageMetadata: await load('schemas/official-package-metadata.schema.json')
 }
 
 const ajv = new Ajv2020({ allErrors: true, strict: true })
@@ -53,12 +54,16 @@ async function validateDocuments() {
     const value = await load(path)
     const validate = validatorFor(value)
     if (!validate(value)) throw new Error(`${path} is invalid:\n  ${describeErrors(validate)}`)
+    if (value['x-mojobox-package'] && !validators.packageMetadata(value['x-mojobox-package'])) {
+      throw new Error(`${path} has invalid official package metadata:\n  ${describeErrors(validators.packageMetadata)}`)
+    }
   }
 
   for (const path of invalidFixtures) {
     const value = await load(path)
     const validate = validatorFor(value)
-    if (validate(value)) throw new Error(`${path} must be rejected`)
+    const packageMetadataValid = !value['x-mojobox-package'] || validators.packageMetadata(value['x-mojobox-package'])
+    if (validate(value) && packageMetadataValid) throw new Error(`${path} must be rejected`)
   }
 
   return { catalogFiles, validFixtures, invalidFixtures }
@@ -76,8 +81,8 @@ async function validateMultiHostEvidence() {
   if (new Set(records.map(record => record.host.id)).size !== records.length) throw new Error('Multi-host fixtures require distinct hosts')
 
   const revisions = await load('spec-revisions.json')
-  const ecosystem = revisions.dshEcosystemSpec
-  const sharedFixtures = ecosystem.sharedFixtures
+  const legacyAdmission = revisions.legacyTuiAdmission
+  const sharedFixtures = legacyAdmission.sharedFixtures
   if (!Array.isArray(sharedFixtures) || sharedFixtures.length === 0) throw new Error('Shared Community fixtures are not pinned')
 
   const profile = await load('profiles/eac-admission-0.1.json')
@@ -91,10 +96,10 @@ async function validateMultiHostEvidence() {
   if (profile.dshStdRevision !== revisions.dshStd.revision || eac.specifications.dshStdRevision !== profile.dshStdRevision) {
     throw new Error('EAC evidence does not use the Mojobox dsh-std baseline')
   }
-  if (profile.references.revision !== ecosystem.revision
-    || profile.references.profile !== ecosystem.profile
-    || profile.references.dshStdRevision !== ecosystem.dshStdRevision) {
-    throw new Error('EAC Admission Profile reference does not match dsh-ecosystem-spec')
+  if (profile.references.revision !== legacyAdmission.revision
+    || profile.references.profile !== legacyAdmission.profile
+    || profile.references.dshStdRevision !== legacyAdmission.dshStdRevision) {
+    throw new Error('EAC Admission Profile reference does not match the legacy TUI admission snapshot')
   }
   const eacChecks = new Set(eac.checks.filter(check => check.result === 'pass').map(check => check.id))
   for (const id of profile.levels.Negotiated.requiredChecks) {
@@ -119,20 +124,20 @@ async function validateMultiHostEvidence() {
   }
 
   const tui = records.find(record => record.host.id === 'dsh-tui')
-  const tuiRevision = revisions.dshTui
+  const tuiRevision = revisions.dshTui.legacyEvidence
   if (!tui
     || tui.specifications.admissionProfile !== tuiRevision.profile
     || tui.specifications.dshStdRevision !== tuiRevision.dshStdRevision
-    || tuiRevision.ecosystemSpecRevision !== ecosystem.revision
-    || tuiRevision.profile !== ecosystem.profile
-    || tuiRevision.dshStdRevision !== ecosystem.dshStdRevision
+    || tuiRevision.ecosystemSpecRevision !== legacyAdmission.revision
+    || tuiRevision.profile !== legacyAdmission.profile
+    || tuiRevision.dshStdRevision !== legacyAdmission.dshStdRevision
     || tui.host.adapterVersion !== tuiRevision.version) {
     throw new Error('TUI evidence does not match its pinned adapter and specification revisions')
   }
-  if (tui.hostDescriptorDigest !== ecosystem.tuiHostDescriptor.digest
-    || tui.suite.id !== ecosystem.suite.id
-    || tui.suite.version !== ecosystem.suite.version
-    || tui.suite.digest !== ecosystem.suite.digest) {
+  if (tui.hostDescriptorDigest !== legacyAdmission.tuiHostDescriptor.digest
+    || tui.suite.id !== legacyAdmission.suite.id
+    || tui.suite.version !== legacyAdmission.suite.version
+    || tui.suite.digest !== legacyAdmission.suite.digest) {
     throw new Error('TUI evidence does not match pinned upstream evidence inputs')
   }
 
@@ -150,9 +155,6 @@ async function validateMultiHostEvidence() {
 
 async function validateCatalog() {
   const pluginPaths = await jsonFiles('catalog/plugins')
-  if (pluginPaths.length < 5 || pluginPaths.length > 10) {
-    throw new Error(`Stage 0 requires 5 to 10 plugin records, found ${pluginPaths.length}`)
-  }
 
   const plugins = new Map()
   for (const path of pluginPaths) {
@@ -163,7 +165,7 @@ async function validateCatalog() {
 
   const packPaths = (await jsonFiles('catalog/packs')).filter(path => path.endsWith('.pack.json'))
   const lockPaths = (await jsonFiles('catalog/packs')).filter(path => path.endsWith('.lock.json'))
-  if (packPaths.length !== 2 || lockPaths.length !== 2) throw new Error('Stage 0 requires exactly two maintained Packs and Locks')
+  if (lockPaths.length !== packPaths.length) throw new Error('Every maintained Pack requires a matching Lock')
 
   for (const packPath of packPaths) {
     const lockPath = packPath.replace('.pack.json', '.lock.json')

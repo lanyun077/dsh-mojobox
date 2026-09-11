@@ -1,161 +1,149 @@
-# Mojobox 架构
+# Mojobox 架构与扩展边界
 
-本文定义 Mojobox 的模块边界、核心对象和数据流。规范性字段以 `schemas/` 与 `fixtures/` 为准。
+本文面向准备扩展 Mojobox 或 EAC Adapter 的开发者。规范字段以 `schemas/`、`fixtures/` 和固定的
+上游 revision 为准。
 
-## 1. 系统上下文
+## 1. EAC-first 系统边界
 
 ```mermaid
 flowchart TB
-  PA[插件作者] -->|发布 Manifest / npm artifact| M[Mojobox Repository]
-  CM[目录维护者] -->|维护 Catalog / Pack / Evidence| M
-  CI[Validator + Site Builder] -->|校验并生成| M
-  M -->|静态 Catalog / 下载文件| WEB[Static Web]
-  M -->|Catalog / Pack Lock / .dshpack| HA[Host Adapter]
-  HA --> EAC[EAC]
-  HA --> TUI[TUI]
-  HA --> OTHER[Other Host]
-
-  STD[dsh-std] -.插件协议.-> M
-  DIST[dsh-distribution] -.环境协议.-> HA
+  PKG[npm artifact / package.json.dsh] --> REPO[Mojobox facts]
+  STD[dsh-std Manifest] --> REPO
+  MAINT[目录维护者] --> REPO
+  REPO --> VALIDATE[Validator]
+  VALIDATE --> CATALOG[Static Catalog + .dshpack]
+  CATALOG --> WEB[只读网站]
+  CATALOG --> EAC[EAC Adapter]
+  EAC --> PLAN[本机计划]
+  PLAN --> TX[快照 / staging / 试启动 / 回滚]
+  DIST[dsh-distribution] -.完整环境边界.-> EAC
 ```
 
-Mojobox 是静态数据与构建项目，不是常驻服务。网站是只读视图；Host Adapter 才接触本机
-环境和执行安装。
+Mojobox 不启动插件、不修改 profile、不持有安装锁。EAC 是当前首要宿主，拥有本机状态与 Level 2
+事务；公共数据不能包含 EAC 的 profile 路径、RPC、snapshot ID、ownership 或 journal。
 
-## 2. 核心对象
+## 2. 四类协议输入
 
-```mermaid
-erDiagram
-  PLUGIN_MANIFEST ||--o{ PACK : selected_by
-  PACK ||--|| PACK_LOCK : resolved_as
-  PACK_LOCK }o--|| PLUGIN_MANIFEST : pins
-  PLUGIN_MANIFEST ||--o{ EVIDENCE : evaluated_by
-  HOST_PROFILE ||--o{ EVIDENCE : scopes
-  SPEC_REVISION ||--o{ EVIDENCE : binds
-```
+### 官方 Package Manifest
 
-| 对象 | 回答的问题 | 关键约束 |
+官方 Harness 在 `@deepseek-ai/dsh-package-manifest` 中声明 `package.json.dsh` 的 TypeScript 类型。
+Mojobox 使用 `x-mojobox-package` 原样投影其中与目录相关的字段：`dependencies`、
+`peerDependencies`、`engines` 和 `dsh`。根 `name`、`version` 继续复用插件记录字段。
+
+投影是可选事实，不是 Mojobox 新插件协议。当前官方 loader 未必执行全部兼容约束，因此 Adapter
+不能仅凭该字段宣称插件可安装。
+
+### dsh-std Plugin Manifest
+
+`dsh-std` 仍拥有插件 facet、权限、entrypoint 和运行时协商语义。当前 Catalog 基线固定在
+vendored `0.15` Schema；升级时必须审阅差异、更新 vendor、fixtures 和受影响 Evidence。
+
+### Mojobox Pack / Lock / Evidence
+
+| 对象 | 责任 | 不负责 |
 | --- | --- | --- |
-| Plugin Manifest | 这个插件是什么？ | 优先采用作者声明；目录代维护必须明确标记 |
-| Pack | 希望组合哪些插件？ | 表达必需/可选关系和宿主要求，不写下载事实 |
-| Pack Lock | 这次发布究竟安装什么？ | 精确版本、精确 npm 来源、Manifest/artifact SHA-256 |
-| Evidence | 在什么条件下验证过什么？ | 绑定 subject、Host、suite、revision、时间和结果 |
-| Host Profile | 某宿主提供哪些能力？ | 只描述该宿主，不提升为全生态要求 |
-| Spec Revision | 本次声明依据哪版协议？ | 使用完整 commit，不跟随分支或浮动标签 |
+| Pack | 组合意图、分类、必需/可选组件、宿主要求 | 下载解析和本机事务 |
+| Pack Lock | 精确版本、source、Manifest/artifact digest | 用户 profile 与完整环境 |
+| Evidence | 精确 subject、Host、suite、revision 下的结果 | 永久兼容或安全认证 |
+| `.dshpack` | 离线运输 Lock 指定的字节 | 自动执行安装 |
 
-## 3. 协议所有权
+Pack 的 `metadata.category` 可选，当前值为 `function`、`appearance`、`workflow`。旧 Pack 不分类仍
+合法；分类只供发现与筛选，EAC 的计划算法继续按 `components` 与 `requires` 工作。
 
-| 领域 | 权威来源 | Mojobox 行为 |
-| --- | --- | --- |
-| 插件 facet、权限、entrypoint、运行时协商 | `dsh-std` | 引用和校验，不复制定义 |
-| 插件目录、组合、锁定和证据 | Mojobox | 维护 Schema 与数据 |
-| 完整环境身份、布局、发现和迁移 | `dsh-distribution` | 不塞入 Pack/Lock |
-| TUI 准入规则 | TUI/历史 ecosystem spec 材料 | 作为有 revision 的 Evidence 输入 |
-| 本地安装、快照、锁和回滚 | Host Adapter | Mojobox 不规定私有实现 |
+### 完整环境协议
 
-发生概念重叠时，遵循权威来源而不是扩展 Mojobox Schema。一个宿主的私有能力只能出现在
-Host Profile、Evidence 或 Adapter 层。
+Profile/Preset、整套运行时、数据目录和环境迁移属于 `dsh-distribution`。未来即使网站展示完整
+环境，也应通过独立对象和 Manager 接入，不把这些语义追加到 `kind: Pack`。
 
-## 4. 写入与生成边界
+## 3. 事实源与生成物
 
 ```mermaid
 flowchart LR
-  subgraph Sources[人工维护的事实源]
-    P1[catalog/plugins]
-    P2[catalog/packs]
-    P3[catalog/evidence]
+  subgraph Sources[可提交事实源]
+    P[catalog/plugins]
+    K[catalog/packs]
+    E[catalog/evidence]
     S[schemas + fixtures]
     R[profiles + spec-revisions]
   end
-
   Sources --> V[scripts/validate.mjs]
-  V -->|通过| B[scripts/build-site.mjs]
+  V --> B[scripts/build-site.mjs]
   B --> G[site/public/generated]
-  G --> VT[Vite]
-  VT --> D[dist]
+  G --> D[dist]
   B --> Z[.dshpack]
 ```
 
-规则：
+`site/public/generated/`、`dist/` 和 `.cache/` 均可重建，不手工编辑、不提交。`npm test` 不访问
+网络或执行插件；构建可能下载 artifact，但写入离线包前必须核对 SHA-256。
 
-- 只能修改左侧事实源与构建代码。
-- `site/public/generated/`、`dist/`、`.cache/` 随时可以删除重建。
-- `npm test` 不访问网络、不执行插件代码。
-- `npm run build` 可能下载 Lock 指定的 npm tarball，但必须先验证 SHA-256 才生成离线包。
+## 4. 校验与构建
 
-## 5. 校验链
+Validator 依次检查：
 
-`scripts/validate.mjs` 执行两层检查：
+1. Pack、Lock、Evidence 和 `dsh-std` Manifest Schema；
+2. 存在 `x-mojobox-package` 时，检查官方字段投影 Schema；
+3. 正例必须接受、反例必须拒绝；
+4. Pack/Lock 成对、组件集合和版本一致；
+5. Lock 的 source、Manifest digest 和 artifact digest 与目录一致；
+6. Evidence 的 subject、suite 和 digest 与固定事实一致；
+7. 历史多宿主 fixture 只绑定 `legacyTuiAdmission`，不影响通用目录。
 
-1. **Schema 校验**：Catalog 与合法 fixture 必须通过；非法 fixture 必须失败。
-2. **关系校验**：Pack/Lock 组件集合、Manifest 摘要、artifact 摘要、Evidence、Host Profile、
-   suite 与固定 revision 必须互相一致。
+目录不再限制插件或 Pack 数量。`components.maxItems` 等 wire contract 限制仍保留，这和开发阶段
+配额是两回事。
 
-Validator 只证明已提交数据结构有效且关系自洽。它不证明 artifact 安全，也不代表真实宿主
-已经运行过安装。
+构建器复制下载文件、读取真实 artifact、生成稳定排序与固定 ZIP 时间的 `.dshpack`，最后生成
+网站消费的 `catalog.json`。Catalog 中插件会暴露 `packageMetadata`，Pack 保留 `metadata.category`。
 
-## 6. 构建链
-
-`scripts/build-site.mjs` 的处理顺序：
-
-1. 清空并重建 `site/public/generated/`。
-2. 复制可下载的 Manifest、Pack 和 Lock。
-3. 按 Lock 获取精确 npm artifact。
-4. 对 Manifest 原始字节和 artifact 分别验证 SHA-256。
-5. 以固定 ZIP 时间和稳定对象顺序生成 `.dshpack`。
-6. 生成静态页面读取的 `catalog.json`。
-7. Vite 将站点输出到 `dist/`。
-
-同一输入与同一 artifact 应产生相同内容。构建不得写入动态时间、本机绝对路径或用户数据。
-
-## 7. 宿主接入模型
+## 5. EAC Adapter 契约
 
 ```mermaid
 sequenceDiagram
-  participant U as User
-  participant UI as Mojobox UI
-  participant A as Host Adapter
-  participant H as Host Transaction Engine
-
-  UI->>A: Catalog entry / Pack Lock
-  A->>A: Read host capabilities and installed state
-  A-->>UI: Read-only plan and blockers
-  U->>UI: Confirm
-  UI->>A: Apply exact Lock
-  A->>H: snapshot / stage / verify / commit
-  H-->>A: result or rollback-required
-  A-->>UI: final state
+  participant U as 用户
+  participant W as Mojobox Web
+  participant A as EAC Adapter
+  participant T as EAC Transaction
+  W->>A: dsh-eac://mojobox/pack/<id>
+  A->>A: 读取 Catalog、能力和已安装状态
+  A-->>U: keep / add / blocked 只读计划
+  U->>A: 确认安装
+  A->>T: 下载并校验、staging、trial boot
+  T-->>A: commit 或 rollback
+  A-->>U: 最终状态
 ```
 
-Level 0 宿主只需消费 Catalog；Level 1 增加本地计划；Level 2 才执行事务安装。缺少安装能力时
-界面应保持可浏览和可下载，不能把“不支持”伪装成失败或显示不可用写操作。
+Adapter 分级：Level 0 浏览 Catalog；Level 1 生成本机计划；Level 2 执行事务。当前 EAC 已有 Level 2
+基线，仍需真实全新虚拟机、故障注入和发布包验收后才能称为生产就绪。
 
-EAC 当前拥有自己的 Level 2 实现。EAC 私有路径、profile、RPC、snapshot ID、ownership 和
-journal 不进入公共 Pack Schema。
+新增 Host Adapter 时只消费公共 Catalog，不复制 EAC 私有实现。缺少安装能力时保持浏览和下载，
+不暴露无效的安装按钮。
 
-## 8. 上游 revision 与 Evidence
+## 6. 上游与历史 Evidence
 
-`spec-revisions.json` 是上游坐标入口。更新上游协议时：
+`spec-revisions.json` 将现行坐标和历史验证输入分开：
 
-1. 审阅上游差异；
-2. 更新固定 commit 和 vendored Schema/许可证；
-3. 更新受影响的 profile 与 fixtures；
-4. 重新运行对应 suite；
-5. 新签发 Evidence，而不是改写历史 Evidence。
+- `officialHarness`：官方 Package Manifest 类型基线；
+- `dshStd`：当前 Catalog Manifest 基线；
+- `dshEcosystemSpec`：现行生态入口及其挂载 revision；
+- `dshTui`：当前 TUI revision，旧验证坐标放在 `legacyEvidence`；
+- `legacyTuiAdmission`：已移除的旧 admission suite，仅供历史 fixture；
+- `dshDistribution`：完整环境规范；
+- `eacUpstream`：EAC 对齐基线。
 
-Mojobox Manifest 基线与旧 TUI admission fixture 使用不同 `dsh-std` revision，是当前历史证据
-的一部分。除非重新验证，不应为了表面统一而替换 revision 或补造作者字段。
+更新现行上游不能覆盖历史坐标。只有重新运行 suite 后才能签发新 Evidence。
 
-## 9. 与 EAC 同步
+## 7. 团队扩展顺序
 
-EAC 内置插件和 Catalog snapshot 位于 EAC 仓库。本仓库不反向依赖 EAC 私有源码。公共
-Catalog 改变后，当前需要人工更新 EAC snapshot 并运行 EAC Mojobox 集成测试；自动
-sync/check 命令尚未实现。
+1. 新插件先进入 Catalog，只有真实 artifact 才能进 Lock。
+2. 组合需求使用已有三种 Pack 分类，不为单个案例扩 Schema。
+3. 真实宿主测试结果独立签发 Evidence，fixture 不算生产证据。
+4. EAC 新能力先修改 Adapter 类型/测试，再决定是否需要公共协议字段。
+5. Profile/Preset 或完整环境需求先对照 `dsh-distribution`，不要扩充 Pack。
 
-## 10. 安全与隐私边界
+每次协议变更至少添加一个正例和一个反例；跨 EAC 修改按 EAC 仓库影响矩阵选择测试级别。
 
-- 网站不读取用户本机环境，也不直接执行安装。
-- Catalog 不保存 token、cookie、凭据或用户路径。
-- `.dshpack` 不包含 profile、会话、用户数据或 secrets。
-- 外部 artifact 在摘要校验前不能进入发布包。
-- Evidence 是范围有限的验证记录，不是安全认证或永久兼容承诺。
+## 8. 安全与隐私
+
+- Catalog、日志和 `.dshpack` 不保存 token、cookie、用户路径、会话或凭据。
+- 外部 artifact 在 digest 校验前不进入发布包。
+- 网站只读，不获取本机文件或进程权限。
+- Evidence 有明确范围、时间和撤回状态，不作为安全背书。

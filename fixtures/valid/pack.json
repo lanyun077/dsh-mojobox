@@ -6,7 +6,8 @@
     "id": "org.example.coding-pack",
     "version": "1.0.0",
     "name": "Coding Pack",
-    "description": "A minimal valid Pack fixture."
+    "description": "A minimal valid Pack fixture.",
+    "category": "workflow"
   },
   "components": [
     { "id": "org.example.file-preview", "version": "1.2.3", "required": true }

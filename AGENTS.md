@@ -24,6 +24,7 @@
 | Pack / Lock | `catalog/packs/*.pack.json`、`*.lock.json` |
 | 生产 Evidence | `catalog/evidence/*.json` |
 | Mojobox wire format | `schemas/*.schema.json` |
+| 官方 `package.json.dsh` 投影 | `schemas/official-package-metadata.schema.json` 与插件记录的 `x-mojobox-package` |
 | 协议正反例 | `fixtures/valid/`、`fixtures/invalid/` |
 | Host/Profile 快照 | `profiles/*.json` |
 | 上游 commit 和 digest | `spec-revisions.json` |
@@ -41,7 +42,8 @@
 `catalog/plugins/*.json`。
 
 要求：优先作者声明；目录代维护必须标 `registry-maintained`；只写可核验事实；没有 artifact
-就标 `unpublished`；不要为单个插件修改 Schema。
+就标 `unpublished`；artifact 确有 `package.json.dsh` 时才投影 `x-mojobox-package`；不要为单个
+插件修改 Schema。
 
 验证：`npm test`。进入 Pack 时再运行 `npm run build`。
 
@@ -49,7 +51,8 @@
 
 读取：`schemas/pack.schema.json`、`schemas/pack-lock.schema.json`、一对现有 Pack/Lock。
 
-要求：文件成对；ID、版本和组件集合一致；只用精确版本与精确 npm 来源；摘要来自真实字节。
+要求：文件成对；ID、版本和组件集合一致；只用精确版本与精确 npm 来源；摘要来自真实字节；
+插件型 Pack 的分类只使用 `function`、`appearance`、`workflow`，不加入 profile 或完整环境。
 
 验证：`npm test`、`npm run build`。
 
@@ -95,6 +98,8 @@
 - Mojobox 只拥有 Catalog、Pack、Pack Lock、Evidence 和 `.dshpack`。
 - Host Adapter 拥有本地计划、用户确认、安装、快照、验证和回滚。
 - TUI 私有 admission 规则不能变成所有宿主的公共 Pack 要求。
+- `package.json.dsh` 由官方 Harness 定义；Mojobox 只投影真实字段，不声称官方 installer 已执行兼容校验。
+- `legacyTuiAdmission` 只服务历史 fixture；现行生态坐标不能替换历史 Evidence 输入。
 
 有上游定义时引用上游，不在 Mojobox 中创建同义字段。
 
